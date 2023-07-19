@@ -1,130 +1,43 @@
-from bs4 import BeautifulSoup
-import requests, os, time
+import csv
+import requests
+import json
 
 
-def mkdir_if_not_exist(directory="ranobe_loads"):
-    if not os.path.exists(directory):
-        os.mkdir(directory)
+def get_json():
+    url = "https://www.ozon.ru/api/composer-api.bx/page/json/v2" \
+          "?url=/product/avtomaticheskaya-kofemashina-inhouse-rozhkovaya-coffee-arte-icm1507-seryy-397529235/"
+    response = requests.get(url=url)
+    with open('ozon_1.json', 'w', encoding='utf-8') as file:
+        json.dump(response.json(), file, ensure_ascii=False)
+
+    return response.json()
 
 
+def get_product_info(result):
+    product = {}
+    widgets = result["widgetStates"]
+    for widget_name, widget_value in widgets.items():
+        widget_value = json.loads(widget_value)
+        if "webSale" in widget_name:
+            product_info = widget_value["cellTrackingInfo"]["product"]
+            product["title"] = product_info["title"]
+            product["id"] = product_info["id"]
+            product["price"] = product_info["price"]
+            product["final_price"] = product_info["finalPrice"]
 
-def is_file(filename, directory='ranobe_loads'):
-    filename = filename + '.txt'
-
-    if os.path.isfile(os.path.join(directory, filename)):
-        return True
-    
-    return False
-
-
-
-
-
-def get_session(login, password, user_agent):
-    session = requests.Session()
-    session.headers.update({'User-Agent': user_agent})
-
-    #auth
-    login_url = r"https://lib.social/login"
-    login_response_get = session.get(login_url)
-    login_soup = BeautifulSoup(login_response_get.text, "html.parser")
-    token = login_soup.find('input', {'name': '_token'}).get('value')
-    data = {
-        "_token": token,
-        "from": "https://ranobelib.me/?section=home-updates",
-        "email": login,
-        "password": password,
-        "remember": "on"
-    }
-    login_response_post = session.post(login_url, data=data)
-    if login_response_post.status_code == 200:
-        print("Успешная авторизация!")
-    else:
-        print("Не удалось авторизоваться!")
-    
-    return session
+    with open('ozon.csv', 'a', encoding='utf-8') as filecsv:
+        csv.DictWriter(filecsv, fieldnames=["title", "id", "price", "final_price"]).writerow(product)
 
 
-
-
-def get_url_and_name(session):
-    #https://ranobelib.me/yumemiru-danshi-wa-genjitsushugisha?section=info&ui=5279067
-    dirty_url = input("Введите url ранобэ: ")
-
-    response = session.get(dirty_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    url = soup.find("a", class_='button button_block button_primary').get("href")
-    ranobe_name = soup.find('div', class_='media-name__main').get_text(strip=True)
-
-    return url, ranobe_name
-
-
-
-
-
-def parser(url, session, directory, ranobe_name):
-    if not is_file(ranobe_name, directory):
-        while True:
-            response = session.get(url)
-            soup = BeautifulSoup(response.text, "html.parser")
-
-            volume = url.split("/v")[-1].split("/")[0]
-            chapter = url.split("/c")[-1].split("?")[0]
-
-            #Записываем строки в текстовый файл
-            page_text = soup.find("div", class_="reader-container container container_center").children
-            
-            #Записываем в txt файл
-            with open(f'{directory}/{ranobe_name}.txt', 'a', encoding='utf-8') as file:
-                file.write(f"Том {volume}  Глава {chapter}\n\n\n\n")
-                for paragraph in page_text:
-                    paragraph = str(paragraph).replace("\n", ' ').replace("<p>", "").replace("</p>", "\n")
-                    
-                    if len(str(paragraph)) <= 2:
-                        continue
-
-                    file.write(paragraph + "\n")
-                file.write("\n\n")
-                print(f"Скачано:  Том {volume}  Глава {chapter}")
-            
-
-
-
-            #Проверка на наличие след. главы
-            url = soup.find_all("a", class_="reader-header-action reader-header-action_icon")[-1].get("href")
-            url = url.split("?")[0]
-
-            if str(url) == "#":
-                print("Готово!")
-                break
-
-    else:
-        print("Ранобэ уже скачано!")
-            
-
-
-
-    
 def main():
-    directory = "ranobe_loads"
-    mkdir_if_not_exist(directory)
+    # get_json()
+    with open('ozon.csv', 'w', encoding='utf-8') as filecsv:
+        csv.DictWriter(filecsv, fieldnames=["title", "id", "price", "final_price"]).writeheader()
 
-    #Data
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
-    login = "login"
-    password = "password"
-
-    #session
-    session = get_session(login, password, user_agent)
-    url, ranobe_name = get_url_and_name(session)
-    parser(url, session, directory, ranobe_name)
+    with open('ozon_1.json', 'r', encoding='utf-8') as file:
+        result = json.load(file)
+        get_product_info(result)
 
 
-try:
+if __name__ == '__main__':
     main()
-except Exception as e:
-    print(e, "Произошла ошибка!")
-
-
-time.sleep(10)
